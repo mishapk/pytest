@@ -1,6 +1,7 @@
-﻿import pyaudio
+﻿#!-*-coding:utf-8-*-
+import pyaudio
 import wave
-import audioop, numpy, struct, math
+import audioop, numpy, struct, math,time
 import os
 import sys
 from PyQt4.QtCore import *
@@ -8,24 +9,18 @@ from PyQt4.QtGui import *
 from PyQt4 import uic, QtCore, QtSql
 class RPlayer(QThread):
     levelProgress = pyqtSignal(int)
-    CHUNK = 1024
-    FORMAT = pyaudio.paInt16
-    CHANNELS =2 
-    RATE = 44100
-    RECORD_SECONDS = 5
-    WAVE_OUTPUT_FILENAME = "output.wav"
+    maxDurationProgress = pyqtSignal(int)    # Максимальная продолжительнасть  сек
+    currentDurationProgress = pyqtSignal(int) # Текущая продолжительнасть  сек
+    textProgress = pyqtSignal(str)
     VOLUME=1.0
-    p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                frames_per_buffer=CHUNK)
-    p2 = pyaudio.PyAudio()
-    stream2 = p2.open(format=FORMAT,channels=CHANNELS,rate=RATE,output=True)
+    def __init__(self, mode,  parent=None):
+        super(RPlayer, self).__init__(parent)
+        self.mode = mode
+
+
     def getVolume(self,data):
         mx = audioop.max(data, 2)*100/2**15
-        print(mx)
+        #print(mx)
         self.levelProgress.emit(mx)
     def setVolume(self,volume):
         self.VOLUME=volume/100
@@ -33,35 +28,64 @@ class RPlayer(QThread):
         decodedata = numpy.fromstring(data, numpy.int16)
         newdata = (decodedata * self.VOLUME).astype(numpy.int16)
         return newdata.tostring()
-    def echocancel(self,outputdata, inputdata):
-        pos = audioop.findmax(outputdata, 800)    # one tenth second
-        out_test = outputdata[pos*2:]
-        in_test = inputdata[pos*2:]
-        ipos, factor = audioop.findfit(in_test, out_test)
-        # Optional (for better cancellation):
-        # factor = audioop.findfactor(in_test[ipos*2:ipos*2+len(out_test)],
-        #              out_test)
-        prefill = '\0'*(pos+ipos)*2
-        postfill = '\0'*(len(inputdata)-len(prefill)-len(outputdata))
-        outputdata = prefill + audioop.mul(outputdata,2,-factor) + postfill
-        return audioop.add(inputdata, outputdata, 2)
+
     def run(self):
-        for i in range(0, int(self.RATE / self.CHUNK * self.RECORD_SECONDS)):
-            data = self.stream.read(self.CHUNK)
+
+        CHUNK = 1024
+        FORMAT = pyaudio.paInt16
+        CHANNELS =2
+        RATE = 44100
+        RECORD_SECONDS = 10
+        WAVE_OUTPUT_FILENAME = "output.wav"
+
+        p = pyaudio.PyAudio()
+        stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,output = True,
+                frames_per_buffer=CHUNK)
+        frames = []
+
+        sm=RATE / CHUNK
+        self.maxDurationProgress.emit(RECORD_SECONDS*10)
+
+        for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+            data = stream.read(CHUNK)
             data = self.changeVolume(data)
-            #data = self.echocancel(data,data)
-            self.stream2.write(data)
             self.getVolume(data)
+            sec=(i/sm)-RECORD_SECONDS
+            self.currentDurationProgress.emit((sec+RECORD_SECONDS+1)*10)
 
-
-        self.levelProgress.emit(0)		  
-
+            if self.mode:
+                stream.write(data)
+                text="{} {:.2f} {}".format('Трансляция ',sec,'с' )
+                self.textProgress.emit(text)
+            else:
+                frames.append(data)
+                text="{} {:.2f} {}".format('Запись ',sec,'с' )
+                self.textProgress.emit(text)
+        self.levelProgress.emit(0)
+        i=0
+        for data in frames:
+            stream.write(data)
+            sec="{} {:.2f} {}".format('Трансляция ',(i/sm)-RECORD_SECONDS,'с' )
+            self.textProgress.emit(sec)
+            self.getVolume(data)
+            self.currentDurationProgress.emit(((i/sm)+1)*10)
+            i+=1
+        self.textProgress.emit('Готов')
+        self.currentDurationProgress.emit(0)
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        self.levelProgress.emit(0)
+    def __del__(self):
+        print('del-playEnd')
 class AOPlayer(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
         ChangeVolume = pyqtSignal(int)
-        self.a=RPlayer()
-        self.a.finished.connect(self.Stop)
+
          
         self.initGraphics()
     def initGraphics(self):
@@ -85,7 +109,7 @@ class AOPlayer(QWidget):
         self.mpVolume.setMinimum(0)
         self.mpVolume.setMaximum(100)
         self.mpVolume.setValue(100)
-        self.mpVolume.valueChanged.connect(self.a.setVolume)
+
         #----------------VolumeSlider----------------]
         self.bPlay = QToolButton()
         self.bStop = QToolButton()
@@ -125,10 +149,11 @@ class AOPlayer(QWidget):
         self.bRecord.clicked.connect(self.cb) 
         #--------=Button=Record-------------------------------
 
-        self.label3 =QLabel('готов')
+        self.label3 =QLabel('')
         self.cbDirect = QCheckBox(' Прямой') 
         self.pbVolume = QProgressBar()
         self.pbVolume.setTextVisible(False)
+
         self.pbVolume.setStyleSheet(" QProgressBar { border: 1px solid grey; border-radius: 0px; text-align: center; } QProgressBar::chunk {background-color: #3add36; width: 1px;}")
 
         grid2.addWidget(self.bRecord,0,0,2,1) 
@@ -137,10 +162,18 @@ class AOPlayer(QWidget):
         grid.addWidget(self.mGBox,0,2,4,1) 
         grid.addWidget(self.pbVolume,4,2) 
 
-        self.a.levelProgress.connect(self.pbVolume.setValue) 
+
 
 
     def cb(self):
+
+        self.a=RPlayer(self.cbDirect.isChecked())
+        self.a.finished.connect(self.Stop)
+        self.mpVolume.valueChanged.connect(self.a.setVolume)
+        self.a.levelProgress.connect(self.pbVolume.setValue)
+        self.a.textProgress.connect(self.label3.setText)
+        self.a.maxDurationProgress.connect(self.mpSeek.setMaximum)
+        self.a.currentDurationProgress.connect(self.mpSeek.setValue)
         self.a.start()
     def Stop(self):
         self.bRecord.setChecked(False)
