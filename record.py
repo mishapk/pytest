@@ -115,19 +115,4 @@ class AOPlayer(QWidget):
         self.bRecord.setChecked(False)
         
 	
-if __name__ == '__main__':
-    # create application
-    app = QApplication(sys.argv)
-    app.setApplicationName('PCN')
-
-    w = AOPlayer()
-    w.setWindowTitle('PCN')
-    #w.setGeometry(30,30,640,480)
-    w.show()
-
-    # connection
-    #QObject.connect(app, SIGNAL('lastWindowClosed()'), app, SLOT('quit()'))
-
-    # execute application
-    sys.exit(app.exec_())
 
