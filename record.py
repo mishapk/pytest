@@ -167,7 +167,9 @@ class AOPlayer(QWidget):
  	       
 	# Column 1
         self.lineSensor= QLineEdit()
+        self.lineSensor.setReadOnly(True)
         self.lineMessage= QLineEdit()
+        self.lineMessage.setReadOnly(True)
         #==========VolumeSlider======================[
         self.mpVolume = QSlider(Qt.Horizontal)
         self.mpVolume.setMinimum(0)
@@ -237,10 +239,10 @@ class AOPlayer(QWidget):
 
     def OpenFile(self):
         dialog = QFileDialog()
-        urls=[QUrl.fromLocalFile(".")]
+        urls=[QUrl.fromLocalFile("./sounds")]
         dialog.setSidebarUrls(urls)
         dialog.setFilter('Wav(*.wav)')
-        dialog.setDirectory('.')
+        dialog.setDirectory('./sounds')
         dialog.setReadOnly(True)
         dialog.setFileMode(QFileDialog.AnyFile)
 
