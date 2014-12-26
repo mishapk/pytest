@@ -129,6 +129,7 @@ class RPlayer(QThread):
         i=0
         while(i<len(frames) and not self.stp):
             data=frames[i]
+            data = self.changeVolume(data)
             stream.write(data)
             sec="{} {:.2f} {}".format('Трансляция ',(i/sm)-RECORD_SECONDS,'с' )
             self.textProgress.emit(sec)
